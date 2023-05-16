@@ -1,0 +1,141 @@
+---
+
+- hosts: Remote_PC
+  become: true
+  gather_facts: yes
+
+  tasks:
+    - name: Update and upgrade packages
+      apt:
+        update_cache: yes
+        upgrade: yes
+
+    - name: Configure firewall
+      ufw:
+        rule: allow
+        port: "{{ item }}"
+        state: enabled
+      with_items:
+        - 22
+        - 80
+        - 443
+
+    - name: Restrict SSH access
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
+      with_items:
+        - { regexp: '^PermitRootLogin', line: 'PermitRootLogin no' }
+        - { regexp: '^PasswordAuthentication', line: 'PasswordAuthentication no' }
+
+    - name: Enable SSH key-based authentication
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^#?(PasswordAuthentication)'
+        line: 'PasswordAuthentication no'
+
+    - name: Configure SSH session timeout
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^#?(ClientAliveInterval)'
+        line: 'ClientAliveInterval 300'
+      notify: Restart SSH service
+
+    - name: Install intrusion detection system
+      apt:
+        name: snort
+        state: present
+
+    - name: Copy Snort configuration file
+      copy:
+        src: templates/snort.conf
+        dest: /etc/snort/snort.conf
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Create Snort rules directory
+      file:
+        path: /etc/snort/rules
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Copy Snort rules files
+      copy:
+        src: templates/snort.rules
+        dest: /etc/snort/rules/
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Start and enable Snort service
+      systemd:
+        name: snort
+        state: started
+        enabled: yes
+
+    - name: Enable automatic security updates
+      apt:
+        name: unattended-upgrades
+        state: present
+
+    - name: Configure strong password policy
+      lineinfile:
+        path: /etc/pam.d/common-password
+        regexp: '^password\s+requisite\s+pam_pwquality.so'
+        line: 'password requisite pam_pwquality.so retry=3 difok=3 minlen=12 dcredit=-1 ucredit=-1 ocredit=-1 lcredit=-1'
+
+    - name: Install fail2ban
+      apt:
+        name: fail2ban
+        state: present
+
+    - name: Configure fail2ban
+      copy:
+        src: templates/jail.local
+        dest: /etc/fail2ban/jail.local
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Start and enable fail2ban
+      systemd:
+        name: fail2ban
+        state: started
+        enabled: yes
+
+    - name: Install auditd
+      apt:
+        name: auditd
+        state: present
+
+    - name: Configure auditd rules
+      copy:
+        src: templates/rules.rules
+        dest: /etc/audit/rules.d/rules.rules
+        owner: root
+        group: root
+        mode: '0640'
+
+    - name: Start and enable auditd
+      systemd:
+        name: auditd
+        state: started
+        enabled: yes
+
+    - name: Configuring log rotation and retention
+      copy:
+        src: templates/Security_log_configuration
+        dest: /etc/logrotate.d/Security_log_configuration
+        owner: root
+        group: root
+        mode: '0644'
+
+  handlers:
+    - name: Restart SSh service
+      systemd:
+        name: sshd
+        state: restarted

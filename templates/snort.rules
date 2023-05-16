@@ -1,0 +1,2 @@
+alert tcp $HOME_NET any -> $EXTERNAL_NET any (msg:"Example rule - Detect TCP traffic"; sid:100001; rev:1;)
+alert udp $HOME_NET any -> $EXTERNAL_NET any (msg:"Example rule - Detect UDP traffic"; sid:100002; rev:1;)
